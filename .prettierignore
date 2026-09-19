@@ -1,0 +1,10 @@
+cdk.out
+cdk.out.*
+coverage
+node_modules
+package-lock.json
+.tmp
+cdk-outputs.json
+remote-workers.json
+config/environments/local.json
+worker/local/*.tgz

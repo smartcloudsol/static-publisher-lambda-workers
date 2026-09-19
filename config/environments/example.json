@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "stackName": "WpSuiteStaticPublisherWorkersDev",
+  "region": "eu-central-1",
+  "callerRoleArn": "arn:aws:iam::123456789012:role/wordpress-ec2-instance-role",
+  "attachCallerPolicy": false,
+  "publisherExporterVersion": "1.1.62",
+  "publisherExporterSource": "npm",
+  "network": {
+    "vpcId": "vpc-0123456789abcdef0",
+    "useDefaultVpc": false,
+    "subnetIds": ["subnet-0123456789abcdef0", "subnet-0123456789abcdef1"],
+    "securityGroupIds": ["sg-0123456789abcdef0"],
+    "originSecurityGroupId": "sg-0fedcba9876543210",
+    "manageOriginIngress": true,
+    "renderEgress": "proxy",
+    "proxyUrl": "http://10.0.1.10:3128",
+    "proxyPort": 3128,
+    "createS3GatewayEndpoint": true,
+    "s3GatewayEndpointRouteTableIds": ["rtb-0123456789abcdef0"]
+  },
+  "workspace": {
+    "bucketName": "existing-workspace-bucket",
+    "prefix": "static-publisher/dev/",
+    "lifecycleDays": 30,
+    "retainOnDelete": true
+  },
+  "targets": [
+    {
+      "id": "production",
+      "bucketName": "static-site-bucket",
+      "prefix": "www/",
+      "region": "eu-central-1"
+    }
+  ],
+  "workers": {
+    "architecture": "arm64",
+    "renderMemoryMiB": 4096,
+    "renderTimeoutSeconds": 600,
+    "renderConcurrency": 4,
+    "renderEphemeralStorageMiB": 2048,
+    "rewriteMemoryMiB": 1769,
+    "rewriteTimeoutSeconds": 300,
+    "rewriteConcurrency": 16,
+    "deployMemoryMiB": 1024,
+    "deployTimeoutSeconds": 300,
+    "deployConcurrency": 8,
+    "logRetentionDays": "30"
+  }
+}

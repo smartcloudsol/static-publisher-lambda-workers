@@ -1,0 +1,29 @@
+# Dependencies and test output
+node_modules/
+coverage/
+.eslintcache
+
+# CDK and generated deployment output
+cdk.out/
+cdk.out.*/
+cdk-outputs.json
+remote-workers.json
+
+# Environment-specific context and configuration
+cdk.context.json
+config/environments/*.json
+!config/environments/example.json
+.env
+.env.*
+!.env.example
+
+# Locally packed exporter and temporary files
+worker/local/*.tgz
+.tmp/
+*.log
+
+# Editors and operating systems
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
