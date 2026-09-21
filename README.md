@@ -37,7 +37,7 @@ task.
 - AWS credentials allowed to bootstrap and deploy CDK, create IAM roles, and
   pass the created execution roles
 - a bootstrapped target account and Region (`npx cdk bootstrap` once)
-- Static Publisher exporter 1.1.69 or newer
+- Static Publisher exporter 1.1.70 or newer
 - one verified render/asset egress path: a private forward proxy or NAT from
   private subnets
 
@@ -75,6 +75,10 @@ Important configuration fields:
   retry, and resource checkpoint logging require 1.1.68 or newer.
   Page-isolated Chromium lifecycle and runtime keepalive require 1.1.69 or
   newer when render batches contain more than one page.
+  Batch-scoped Chromium reuse, per-page non-persistent browser contexts,
+  normal Chromium multi-process execution, and an owned browser temp root
+  require 1.1.70 or newer. The browser remains warm within one render batch;
+  closing each context discards that page's cookies, cache, and storage.
 - `publisherExporterSource` is `npm` for a published release or
   `local-tarball` for a local exporter checkout.
 - Set exactly one of `network.vpcId` or `network.useDefaultVpc: true`.

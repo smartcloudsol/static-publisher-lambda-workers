@@ -26,6 +26,7 @@ scripts/publish.sh
 scripts/synth.sh
 scripts/test.sh
 test/config.test.ts
+test/container-runtime.test.ts
 test/export-config.test.ts
 test/fixtures/synth-app.ts
 test/stack.test.ts
