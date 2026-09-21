@@ -22,6 +22,13 @@ throttles, and p99 duration. The stack also creates an `ExporterAccessRole`
 trusted by the configured EC2 role. Generated exporter configuration refers to
 aliases, never mutable unqualified function names.
 
+Workers write metadata-only progress rows directly to an encrypted DynamoDB
+table with TTL cleanup. Conditional sequence checks prevent delayed updates
+from replacing newer state. Each worker role can perform only `UpdateItem`,
+while the exporter role can perform only `GetItem` against that table. Progress
+write failures are logged but never turn completed export work into a failed
+task.
+
 ## Prerequisites
 
 - Node.js 20-24 and npm
@@ -30,7 +37,7 @@ aliases, never mutable unqualified function names.
 - AWS credentials allowed to bootstrap and deploy CDK, create IAM roles, and
   pass the created execution roles
 - a bootstrapped target account and Region (`npx cdk bootstrap` once)
-- Static Publisher exporter 1.1.65 or newer
+- Static Publisher exporter 1.1.66 or newer
 - one verified render/asset egress path: a private forward proxy or NAT from
   private subnets
 
@@ -61,7 +68,8 @@ Important configuration fields:
   `sts:AssumeRole` policy to that same-account role. When false, attach the
   `ExporterCallerPolicyArn` output through your normal IAM process.
 - `publisherExporterVersion` pins the exact worker implementation. Asset
-  delegation requires 1.1.65 or newer.
+  delegation requires 1.1.65 or newer and live progress requires 1.1.66 or
+  newer.
 - `publisherExporterSource` is `npm` for a published release or
   `local-tarball` for a local exporter checkout.
 - Set exactly one of `network.vpcId` or `network.useDefaultVpc: true`.
@@ -127,6 +135,10 @@ deploys with approval required for IAM broadening. It writes a mode-0600
 operationally enabled until that file exists at
 `<site-runtime>/remote-workers.json` on the coordinator host.
 
+The generated file includes the DynamoDB progress table name. It contains no
+AWS credentials. The exporter reads the table with the same temporary role it
+already uses for Lambda invocation and S3 workspace access.
+
 Install to a locally accessible runtime directory:
 
 ```bash
@@ -178,9 +190,10 @@ responsible for manifest provenance, integrity, job/target association, and
 for refusing stale or untrusted deletion payloads.
 
 Current per-invocation limits are 1-20 same-origin render URLs, 1-20 asset
-URLs, 500 rewrite objects, and 1000 deploy-copy objects. Start with one render
-URL and increase only after duration, memory, and downstream capacity show
-adequate margin.
+URLs, 500 rewrite objects, and 1000 deploy-copy objects. The exporter defaults
+to five render URLs per invocation so one warm Chromium process can be reused
+without increasing the simultaneous load on the origin. Increase batch sizes
+only after duration, memory, and downstream capacity show adequate margin.
 
 ## Security and encryption limitations
 

@@ -34,6 +34,7 @@ const required = [
   "ExporterCallerPolicyArn",
   "WorkerProtocolVersion",
   "DeploymentTargets",
+  "WorkerProgressTableName",
 ];
 for (const name of required) {
   if (typeof outputs[name] !== "string") {
@@ -48,6 +49,9 @@ const config = {
   workspace: {
     bucket: outputs.WorkspaceBucket,
     prefix: outputs.WorkspacePrefix,
+  },
+  status: {
+    tableName: outputs.WorkerProgressTableName,
   },
   functions: {
     render: outputs.RenderFunctionArn,

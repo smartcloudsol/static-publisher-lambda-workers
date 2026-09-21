@@ -30,6 +30,7 @@ function outputs(assetFunctionArn?: string): Record<string, unknown> {
         "arn:aws:iam::123456789012:policy/exporter-caller",
       WorkerProtocolVersion: "1",
       DeploymentTargets: "[]",
+      WorkerProgressTableName: "publisher-worker-progress",
     },
   };
 }
@@ -60,8 +61,10 @@ describe("remote worker config export", () => {
 
       const exported = JSON.parse(await readFile(destinationPath, "utf8")) as {
         functions: Record<string, string>;
+        status: { tableName: string };
       };
       expect(exported.functions.asset).toBe(assetFunctionArn);
+      expect(exported.status.tableName).toBe("publisher-worker-progress");
       expect((await stat(destinationPath)).mode & 0o777).toBe(0o600);
     } finally {
       await rm(directory, { recursive: true, force: true });

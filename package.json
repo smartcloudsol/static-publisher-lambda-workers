@@ -31,6 +31,7 @@
     "test": "vitest run",
     "synth": "cdk synth --strict",
     "synth:ci": "cdk synth --strict --app 'node --import tsx test/fixtures/synth-app.ts' --output cdk.out.ci",
+    "publish:remotes": "node scripts/publish-remotes.mjs",
     "diff": "cdk diff",
     "deploy": "cdk deploy --strict --outputs-file cdk-outputs.json",
     "audit:prod": "npm audit --omit=dev --audit-level=high",

@@ -11,6 +11,7 @@ import {
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as ecrAssets from "aws-cdk-lib/aws-ecr-assets";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
@@ -175,6 +176,12 @@ export class StaticPublisherWorkersStack extends Stack {
     super(scope, id, props);
 
     const { config } = props;
+    const logRetention = retentionDays[config.workers.logRetentionDays];
+    if (!logRetention) {
+      throw new Error(
+        `Unsupported log retention: ${config.workers.logRetentionDays}`,
+      );
+    }
     const vpc =
       props.vpcOverride ??
       ec2.Vpc.fromLookup(this, "Vpc", {
@@ -279,6 +286,21 @@ export class StaticPublisherWorkersStack extends Stack {
       ]);
     }
 
+    const progressTable = new dynamodb.Table(this, "WorkerProgressTable", {
+      partitionKey: { name: "jobId", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "taskId", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      timeToLiveAttribute: "expiresAt",
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+    NagSuppressions.addResourceSuppressions(progressTable, [
+      {
+        id: "AwsSolutions-DDB3",
+        reason:
+          "Worker progress is ephemeral telemetry reconstructed by active workers and automatically expires; point-in-time recovery is not operationally useful.",
+      },
+    ]);
     const renderRole = lambdaRole(
       this,
       "RenderWorkerRole",
@@ -337,6 +359,10 @@ export class StaticPublisherWorkersStack extends Stack {
       PUBLISHER_WORKSPACE_BUCKET: workspaceBucketName,
       PUBLISHER_WORKSPACE_PREFIX: config.workspace.prefix,
       PUBLISHER_ALLOWED_TARGETS: JSON.stringify(config.targets),
+      PUBLISHER_PROGRESS_TABLE: progressTable.tableName,
+      PUBLISHER_PROGRESS_RETENTION_SECONDS: String(
+        config.workspace.lifecycleDays * 24 * 60 * 60,
+      ),
       ...(config.network.proxyUrl
         ? { PUBLISHER_PROXY_URL: config.network.proxyUrl }
         : {}),
@@ -363,12 +389,6 @@ export class StaticPublisherWorkersStack extends Stack {
           platform,
         },
       );
-    const logRetention = retentionDays[config.workers.logRetentionDays];
-    if (!logRetention) {
-      throw new Error(
-        `Unsupported log retention: ${config.workers.logRetentionDays}`,
-      );
-    }
     const renderLogGroup = new logs.LogGroup(this, "RenderWorkerLogGroup", {
       retention: logRetention,
       removalPolicy: RemovalPolicy.DESTROY,
@@ -540,6 +560,20 @@ export class StaticPublisherWorkersStack extends Stack {
     assetAlias.grantInvoke(exporterAccessRole);
     rewriteAlias.grantInvoke(exporterAccessRole);
     deployAlias.grantInvoke(exporterAccessRole);
+    exporterAccessRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        actions: ["dynamodb:GetItem"],
+        resources: [progressTable.tableArn],
+      }),
+    );
+    for (const role of [renderRole, assetRole, rewriteRole, deployRole]) {
+      role.addToPrincipalPolicy(
+        new iam.PolicyStatement({
+          actions: ["dynamodb:UpdateItem"],
+          resources: [progressTable.tableArn],
+        }),
+      );
+    }
     addBucketPrefixAccess(
       this,
       exporterAccessRole,
@@ -601,6 +635,8 @@ export class StaticPublisherWorkersStack extends Stack {
       WorkerProtocolVersion: "1",
       PublisherExporterVersion: config.publisherExporterVersion,
       DeploymentTargets: JSON.stringify(config.targets),
+      WorkerProgressTableName: progressTable.tableName,
+      WorkerProgressTableArn: progressTable.tableArn,
     };
     for (const [outputName, value] of Object.entries(outputs)) {
       new CfnOutput(this, outputName, { value });

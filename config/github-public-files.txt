@@ -1,0 +1,35 @@
+# Exact files copied from the private release repository to the public mirror.
+# Keep private CI, IAM, environment, deployment, and operator files out.
+.github/workflows/ci.yml
+.gitignore
+.prettierignore
+CHANGELOG.md
+CONTRIBUTING.md
+LICENSE
+README.md
+SECURITY.md
+bin/static-publisher-workers.ts
+cdk.json
+config/environments/example.json
+config/github-public-files.txt
+config/load-config.ts
+config/schema.ts
+eslint.config.mjs
+lib/static-publisher-workers-stack.ts
+package-lock.json
+package.json
+scripts/export-config.mjs
+scripts/install-runtime-config.sh
+scripts/prepare-local-exporter.mjs
+scripts/publish-remotes.mjs
+scripts/publish.sh
+scripts/synth.sh
+scripts/test.sh
+test/config.test.ts
+test/export-config.test.ts
+test/fixtures/synth-app.ts
+test/stack.test.ts
+tsconfig.json
+vitest.config.ts
+worker/local/Dockerfile
+worker/npm/Dockerfile

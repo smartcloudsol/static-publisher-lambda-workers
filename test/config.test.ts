@@ -5,7 +5,7 @@ const baseConfig = {
   schemaVersion: 1,
   region: "eu-central-1",
   callerRoleArn: "arn:aws:iam::123456789012:role/exporter",
-  publisherExporterVersion: "1.1.65",
+  publisherExporterVersion: "1.1.66",
   network: {
     vpcId: "vpc-0123456789abcdef0",
     subnetIds: ["subnet-0123456789abcdef0"],

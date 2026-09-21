@@ -16,6 +16,7 @@ config/environments/*.json
 .env
 .env.*
 !.env.example
+.public-sync-deny
 
 # Locally packed exporter and temporary files
 worker/local/*.tgz

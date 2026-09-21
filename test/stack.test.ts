@@ -18,7 +18,7 @@ function synthesize(architecture: "arm64" | "x86_64" = "arm64"): Template {
     account: "123456789012",
     region: "eu-central-1",
     callerRoleArn: "arn:aws:iam::123456789012:role/exporter",
-    publisherExporterVersion: "1.1.65",
+    publisherExporterVersion: "1.1.66",
     network: {
       useDefaultVpc: true,
       renderEgress: "proxy",
@@ -67,12 +67,18 @@ describe("StaticPublisherWorkersStack", () => {
     template.resourceCountIs("AWS::CloudWatch::Alarm", 12);
     const functions = template.findResources("AWS::Lambda::Function");
     const imageUris = new Set(
-      Object.values(functions).map((resource) =>
-        JSON.stringify(
-          (resource as { Properties: { Code: { ImageUri: unknown } } })
-            .Properties.Code.ImageUri,
+      Object.values(functions)
+        .filter(
+          (resource) =>
+            (resource as { Properties: { PackageType?: string } }).Properties
+              .PackageType === "Image",
+        )
+        .map((resource) =>
+          JSON.stringify(
+            (resource as { Properties: { Code: { ImageUri: unknown } } })
+              .Properties.Code.ImageUri,
+          ),
         ),
-      ),
     );
     expect(imageUris.size).toBe(1);
     template.hasResourceProperties("AWS::Lambda::Function", {
@@ -85,6 +91,7 @@ describe("StaticPublisherWorkersStack", () => {
           PUBLISHER_ALLOWED_OPERATION: "render",
           PUBLISHER_WORKSPACE_PREFIX: "publisher/dev/",
           PUBLISHER_PROXY_URL: "http://10.0.1.10:3128",
+          PUBLISHER_PROGRESS_TABLE: Match.anyValue(),
         }),
       },
     });
@@ -166,5 +173,41 @@ describe("StaticPublisherWorkersStack", () => {
     template.hasOutput("RewriteFunctionArn", {});
     template.hasOutput("DeployFunctionArn", {});
     template.hasOutput("DeploymentTargets", {});
+    template.hasOutput("WorkerProgressTableName", {});
+    template.hasOutput("WorkerProgressTableArn", {});
+  });
+
+  it("connects worker progress with least-privilege IAM and ordered storage", () => {
+    const template = synthesize();
+    template.resourceCountIs("AWS::DynamoDB::Table", 1);
+    template.hasResourceProperties("AWS::DynamoDB::Table", {
+      BillingMode: "PAY_PER_REQUEST",
+      KeySchema: [
+        { AttributeName: "jobId", KeyType: "HASH" },
+        { AttributeName: "taskId", KeyType: "RANGE" },
+      ],
+      TimeToLiveSpecification: {
+        AttributeName: "expiresAt",
+        Enabled: true,
+      },
+    });
+    template.resourceCountIs("AWS::Events::EventBus", 0);
+    const policies = template.findResources("AWS::IAM::Policy");
+    const serialized = JSON.stringify(policies);
+    expect(serialized).toContain("dynamodb:UpdateItem");
+    expect(serialized).toContain("dynamodb:GetItem");
+    expect(serialized).not.toContain("dynamodb:Scan");
+    expect(serialized).not.toContain("dynamodb:DeleteItem");
+    for (const rolePrefix of [
+      "RenderWorkerRoleDefaultPolicy",
+      "AssetWorkerRoleDefaultPolicy",
+      "RewriteWorkerRoleDefaultPolicy",
+      "DeployWorkerRoleDefaultPolicy",
+    ]) {
+      const rolePolicies = Object.entries(policies).filter(([logicalId]) =>
+        logicalId.startsWith(rolePrefix),
+      );
+      expect(JSON.stringify(rolePolicies)).toContain("dynamodb:UpdateItem");
+    }
   });
 });
