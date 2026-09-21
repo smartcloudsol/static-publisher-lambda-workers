@@ -15,6 +15,12 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Safe dual-remote publishing with an explicit public-source allowlist and
   leak checks before updating the public repository.
 
+### Fixed
+
+- Preserve origin response MIME types through rewrite, use extension inference
+  only as a fallback, and recopy unchanged bodies when target Content-Type
+  metadata differs.
+
 ## [0.1.0] - 2026-09-19
 
 ### Added

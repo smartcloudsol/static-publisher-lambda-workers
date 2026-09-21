@@ -4,7 +4,7 @@
   "region": "eu-central-1",
   "callerRoleArn": "arn:aws:iam::123456789012:role/wordpress-ec2-instance-role",
   "attachCallerPolicy": false,
-  "publisherExporterVersion": "1.1.66",
+  "publisherExporterVersion": "1.1.67",
   "publisherExporterSource": "npm",
   "network": {
     "vpcId": "vpc-0123456789abcdef0",

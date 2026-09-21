@@ -37,7 +37,7 @@ task.
 - AWS credentials allowed to bootstrap and deploy CDK, create IAM roles, and
   pass the created execution roles
 - a bootstrapped target account and Region (`npx cdk bootstrap` once)
-- Static Publisher exporter 1.1.66 or newer
+- Static Publisher exporter 1.1.67 or newer
 - one verified render/asset egress path: a private forward proxy or NAT from
   private subnets
 
@@ -68,7 +68,8 @@ Important configuration fields:
   `sts:AssumeRole` policy to that same-account role. When false, attach the
   `ExporterCallerPolicyArn` output through your normal IAM process.
 - `publisherExporterVersion` pins the exact worker implementation. Asset
-  delegation requires 1.1.65 or newer and live progress requires 1.1.66 or
+  delegation requires 1.1.65 or newer, live progress requires 1.1.66 or newer,
+  and origin-first MIME preservation plus metadata repair requires 1.1.67 or
   newer.
 - `publisherExporterSource` is `npm` for a published release or
   `local-tarball` for a local exporter checkout.
