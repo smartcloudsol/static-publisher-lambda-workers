@@ -38,6 +38,17 @@ describe("infrastructure configuration", () => {
     expect(parsed.targets[0]?.prefix).toBe("prod/www/");
   });
 
+  it("creates the required DynamoDB gateway endpoint by default", () => {
+    const parsed = infrastructureConfigSchema.parse({
+      ...baseConfig,
+      network: {
+        ...baseConfig.network,
+        createDynamoDbGatewayEndpoint: undefined,
+      },
+    });
+    expect(parsed.network.createDynamoDbGatewayEndpoint).toBe(true);
+  });
+
   it("provides bounded asset worker capacity defaults", () => {
     const parsed = infrastructureConfigSchema.parse(baseConfig);
     expect(parsed.workers.assetMemoryMiB).toBe(1769);

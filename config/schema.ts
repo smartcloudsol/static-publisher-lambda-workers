@@ -171,7 +171,7 @@ export const infrastructureConfigSchema = z
         proxyUrl: proxyUrl.optional(),
         proxyPort: z.number().int().min(1).max(65535).default(3128),
         createS3GatewayEndpoint: z.boolean().default(false),
-        createDynamoDbGatewayEndpoint: z.boolean().default(false),
+        createDynamoDbGatewayEndpoint: z.boolean().default(true),
         s3GatewayEndpointRouteTableIds: z.array(resourceId("rtb")).default([]),
       })
       .refine((value) => Boolean(value.vpcId) !== value.useDefaultVpc, {

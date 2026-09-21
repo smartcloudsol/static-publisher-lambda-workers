@@ -21,7 +21,8 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   only as a fallback, and recopy unchanged bodies when target Content-Type
   metadata differs.
 - Add the required DynamoDB gateway endpoint to worker route tables so progress
-  writes cannot stall inside VPC-attached Lambdas without NAT egress.
+  writes cannot stall inside VPC-attached Lambdas without NAT egress. Endpoint
+  creation defaults to enabled so existing pipeline configs are safe.
 
 ## [0.1.0] - 2026-09-19
 
