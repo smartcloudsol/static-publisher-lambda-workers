@@ -14,6 +14,7 @@ config/environments/example.json
 config/github-public-files.txt
 config/load-config.ts
 config/schema.ts
+docs/canary-testing.md
 eslint.config.mjs
 lib/static-publisher-workers-stack.ts
 package-lock.json
@@ -21,11 +22,15 @@ package.json
 scripts/export-config.mjs
 scripts/install-runtime-config.sh
 scripts/prepare-local-exporter.mjs
+scripts/prepare-canary-config.mjs
+scripts/test-render-canary.mjs
 scripts/publish-remotes.mjs
 scripts/publish.sh
 scripts/synth.sh
 scripts/test.sh
 test/config.test.ts
+test/canary-config.test.ts
+test/render-canary.test.ts
 test/container-runtime.test.ts
 test/export-config.test.ts
 test/fixtures/synth-app.ts

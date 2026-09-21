@@ -9,19 +9,22 @@ const projectRoot = path.resolve(
 );
 
 describe("worker container runtime", () => {
-  it("reserves a private writable root for Chromium without moving the Lambda runtime", async () => {
-    const dockerfile = await readFile(
-      path.join(projectRoot, "worker/npm/Dockerfile"),
-      "utf8",
-    );
+  it.each(["npm", "local"])(
+    "%s reserves a private writable root for Chromium without moving the Lambda runtime",
+    async (source) => {
+      const dockerfile = await readFile(
+        path.join(projectRoot, `worker/${source}/Dockerfile`),
+        "utf8",
+      );
 
-    expect(dockerfile).toContain(
-      "PUBLISHER_BROWSER_TEMP_ROOT=/tmp/wpsuite-publisher-browser",
-    );
-    expect(dockerfile).toMatch(/HOME=\/tmp \\\n\s+TMPDIR=\/tmp/);
-    expect(dockerfile).toContain(
-      "NPM_CONFIG_CACHE=/tmp/wpsuite-publisher-runtime/npm",
-    );
-    expect(dockerfile).not.toContain("HOME=/tmp/wpsuite-publisher-browser");
-  });
+      expect(dockerfile).toContain(
+        "PUBLISHER_BROWSER_TEMP_ROOT=/tmp/wpsuite-publisher-browser",
+      );
+      expect(dockerfile).toMatch(/HOME=\/tmp \\\n\s+TMPDIR=\/tmp/);
+      expect(dockerfile).toContain(
+        "NPM_CONFIG_CACHE=/tmp/wpsuite-publisher-runtime/npm",
+      );
+      expect(dockerfile).not.toContain("HOME=/tmp/wpsuite-publisher-browser");
+    },
+  );
 });
