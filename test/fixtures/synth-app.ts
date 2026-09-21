@@ -20,7 +20,7 @@ const config = infrastructureConfigSchema.parse({
   account: environment.account,
   region: environment.region,
   callerRoleArn: `arn:aws:iam::${environment.account}:role/static-publisher-fixture`,
-  publisherExporterVersion: "1.1.62",
+  publisherExporterVersion: "1.1.65",
   publisherExporterSource: "npm",
   network: {
     useDefaultVpc: true,

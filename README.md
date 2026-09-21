@@ -6,9 +6,12 @@ run. The EC2-side exporter remains the coordinator: it owns crawl decisions,
 task IDs, manifests, retries, and job state. The Lambda workers process only the
 operation and S3 locations allowed by the deployed configuration.
 
-The stack creates three independently sized container-image functions:
+The stack creates four independently sized container-image functions from the
+same worker image source:
 
 - `render` runs Playwright in the selected VPC subnets;
+- `asset` fetches discovered assets through the same VPC/proxy path and writes
+  them to the workspace;
 - `rewrite` rewrites staged text objects outside the VPC;
 - `deploy-copy` performs server-side S3 copies and explicit deletions within
   allowlisted target prefixes.
@@ -27,9 +30,9 @@ aliases, never mutable unqualified function names.
 - AWS credentials allowed to bootstrap and deploy CDK, create IAM roles, and
   pass the created execution roles
 - a bootstrapped target account and Region (`npx cdk bootstrap` once)
-- Static Publisher exporter 1.1.62 or newer
-- one verified render egress path: a private forward proxy or NAT from private
-  subnets
+- Static Publisher exporter 1.1.65 or newer
+- one verified render/asset egress path: a private forward proxy or NAT from
+  private subnets
 
 ## Install and validate
 
@@ -57,8 +60,8 @@ Important configuration fields:
 - `attachCallerPolicy` controls whether CDK attaches its generated
   `sts:AssumeRole` policy to that same-account role. When false, attach the
   `ExporterCallerPolicyArn` output through your normal IAM process.
-- `publisherExporterVersion` pins the exact worker implementation. The example
-  and tests use 1.1.62.
+- `publisherExporterVersion` pins the exact worker implementation. Asset
+  delegation requires 1.1.65 or newer.
 - `publisherExporterSource` is `npm` for a published release or
   `local-tarball` for a local exporter checkout.
 - Set exactly one of `network.vpcId` or `network.useDefaultVpc: true`.
@@ -73,13 +76,23 @@ Important configuration fields:
 - `workspace.prefix` and every target `prefix` must be non-empty. Sharing a
   bucket is supported only when each deployment owns a disjoint prefix.
 - `targets` is the complete deploy-copy allowlist. Use an empty array for a
-  render/rewrite-only deployment. Target IDs must be unique.
+  render/asset/rewrite-only deployment. Target IDs must be unique.
+- `workers.assetMemoryMiB`, `assetTimeoutSeconds`, and
+  `assetEphemeralStorageMiB` independently size asset fetch invocations. The
+  asset worker is always ARM64; `workers.architecture` continues to select the
+  architecture of the render, rewrite, and deploy-copy workers.
+- `workers.assetConcurrency` is the function's reserved-concurrency capacity:
+  it reserves account capacity and provides the stack-level safety ceiling for
+  simultaneous asset invocations. It is not the per-job Lambda fan-out shown
+  in WordPress admin. The coordinator requests that job fan-out independently,
+  and effective parallelism cannot exceed this infrastructure ceiling.
 
 When `manageOriginIngress` is true, the stack adds ingress to
 `originSecurityGroupId` from the worker security groups on `proxyPort`. The
 proxy must not be internet-open, and its own egress policy should restrict the
-destinations the renderer may reach. When existing worker security groups are
-supplied, the operator remains responsible for their outbound rules.
+destinations the render and asset workers may reach. When existing worker
+security groups are supplied, the operator remains responsible for their
+outbound rules.
 
 ## Local exporter builds
 
@@ -164,16 +177,20 @@ deletion list came from the correct crawl manifest. The coordinator is solely
 responsible for manifest provenance, integrity, job/target association, and
 for refusing stale or untrusted deletion payloads.
 
-Current per-invocation limits are 1-20 same-origin render URLs, 500 rewrite
-objects, and 1000 deploy-copy objects. Start with one render URL and increase
-only after duration, memory, and downstream capacity show adequate margin.
+Current per-invocation limits are 1-20 same-origin render URLs, 1-20 asset
+URLs, 500 rewrite objects, and 1000 deploy-copy objects. Start with one render
+URL and increase only after duration, memory, and downstream capacity show
+adequate margin.
 
 ## Security and encryption limitations
 
 The worker roles are separated by operation and scoped to the configured S3
-prefixes. The render function alone is VPC-attached. Configuration files must
-not contain secrets; proxy credentials in `proxyUrl` are rejected. Keep proxy
-authentication in a separately managed network layer.
+prefixes. Render and asset are VPC-attached and share the selected subnet,
+security-group, and proxy/NAT path. The asset role can read and write only the
+workspace prefix and has no target-bucket permissions; target access remains
+exclusive to deploy-copy. Configuration files must not contain secrets; proxy
+credentials in `proxyUrl` are rejected. Keep proxy authentication in a
+separately managed network layer.
 
 New workspace buckets use S3-managed encryption, block public access, and
 enforce TLS. This release does not provision a customer-managed KMS key or add
@@ -192,7 +209,7 @@ IDs, logs, trace annotations, or errors.
 ## Observability and cost controls
 
 - Log retention is configurable from 1 to 365 days and defaults to 30.
-- X-Ray active tracing is enabled on all three workers. X-Ray sampling and
+- X-Ray active tracing is enabled on all four workers. X-Ray sampling and
   retention follow the account-level service configuration.
 - Each alias has alarms for errors, throttles, and p99 duration over 80 percent
   of its timeout. They use two breaching points out of three one-minute periods
@@ -202,10 +219,11 @@ IDs, logs, trace annotations, or errors.
 
 Primary costs are Lambda duration and memory, container image storage, NAT or
 proxy traffic, S3 requests and storage, CloudWatch logs/alarms, and X-Ray
-traces. Playwright rendering is normally the largest Lambda cost. Reserved
-concurrency protects downstream systems but is not a spending limit. Use AWS
-Budgets and Cost Anomaly Detection, keep lifecycle and log retention finite,
-and monitor NAT data processing when an S3 gateway endpoint is disabled.
+traces. Playwright rendering and asset transfer are normally the largest
+Lambda costs. Reserved concurrency is a capacity reservation and safety
+ceiling, not a per-job fan-out control or spending limit. Use AWS Budgets and
+Cost Anomaly Detection, keep lifecycle and log retention finite, and monitor
+NAT data processing when an S3 gateway endpoint is disabled.
 
 ## Retention and cleanup
 
@@ -254,6 +272,9 @@ roles and aliases still exist before reinstalling it.
   contains the exporter's `package.json`.
 - **Render timeouts:** verify proxy/NAT reachability, DNS, security-group
   egress, proxy ingress, and upstream response time before increasing timeout.
+- **Asset timeouts or throttles:** verify the same egress path, then compare the
+  WordPress job fan-out with `workers.assetConcurrency` and the account's
+  available Lambda concurrency before raising the stack safety ceiling.
 - **S3 access denied:** verify the workspace/target prefix, bucket policy,
   object ownership, Region, and SSE-KMS grants. A gateway endpoint policy can
   deny requests even when IAM allows them.

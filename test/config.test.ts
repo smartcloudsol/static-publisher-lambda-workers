@@ -5,7 +5,7 @@ const baseConfig = {
   schemaVersion: 1,
   region: "eu-central-1",
   callerRoleArn: "arn:aws:iam::123456789012:role/exporter",
-  publisherExporterVersion: "1.1.62",
+  publisherExporterVersion: "1.1.65",
   network: {
     vpcId: "vpc-0123456789abcdef0",
     subnetIds: ["subnet-0123456789abcdef0"],
@@ -35,6 +35,35 @@ describe("infrastructure configuration", () => {
     const parsed = infrastructureConfigSchema.parse(baseConfig);
     expect(parsed.workspace.prefix).toBe("publisher/dev/");
     expect(parsed.targets[0]?.prefix).toBe("prod/www/");
+  });
+
+  it("provides bounded asset worker capacity defaults", () => {
+    const parsed = infrastructureConfigSchema.parse(baseConfig);
+    expect(parsed.workers.assetMemoryMiB).toBe(1769);
+    expect(parsed.workers.assetTimeoutSeconds).toBe(600);
+    expect(parsed.workers.assetConcurrency).toBe(16);
+    expect(parsed.workers.assetEphemeralStorageMiB).toBe(1024);
+  });
+
+  it("rejects asset worker settings outside Lambda limits", () => {
+    expect(() =>
+      infrastructureConfigSchema.parse({
+        ...baseConfig,
+        workers: { assetConcurrency: 0 },
+      }),
+    ).toThrow();
+    expect(() =>
+      infrastructureConfigSchema.parse({
+        ...baseConfig,
+        workers: { assetTimeoutSeconds: 901 },
+      }),
+    ).toThrow();
+    expect(() =>
+      infrastructureConfigSchema.parse({
+        ...baseConfig,
+        workers: { assetEphemeralStorageMiB: 511 },
+      }),
+    ).toThrow();
   });
 
   it("rejects unsafe S3 prefixes", () => {

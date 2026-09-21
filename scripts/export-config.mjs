@@ -27,6 +27,7 @@ const required = [
   "WorkspaceBucket",
   "WorkspacePrefix",
   "RenderFunctionArn",
+  "AssetFunctionArn",
   "RewriteFunctionArn",
   "DeployFunctionArn",
   "ExporterAccessRoleArn",
@@ -50,6 +51,7 @@ const config = {
   },
   functions: {
     render: outputs.RenderFunctionArn,
+    asset: outputs.AssetFunctionArn,
     rewrite: outputs.RewriteFunctionArn,
     "deploy-copy": outputs.DeployFunctionArn,
   },

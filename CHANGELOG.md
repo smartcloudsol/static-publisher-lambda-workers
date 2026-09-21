@@ -6,6 +6,11 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Dedicated ARM64 asset worker, exported live alias, least-privilege workspace
+  access, alarms, and Static Publisher exporter 1.1.65 compatibility.
+
 ## [0.1.0] - 2026-09-19
 
 ### Added

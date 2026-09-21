@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { infrastructureConfigSchema } from "../config/schema.js";
 import { StaticPublisherWorkersStack } from "../lib/static-publisher-workers-stack.js";
 
-function synthesize(): Template {
+function synthesize(architecture: "arm64" | "x86_64" = "arm64"): Template {
   const app = new App();
   const networkStack = new Stack(app, "Network", {
     env: { account: "123456789012", region: "eu-central-1" },
@@ -18,7 +18,7 @@ function synthesize(): Template {
     account: "123456789012",
     region: "eu-central-1",
     callerRoleArn: "arn:aws:iam::123456789012:role/exporter",
-    publisherExporterVersion: "1.1.62",
+    publisherExporterVersion: "1.1.65",
     network: {
       useDefaultVpc: true,
       renderEgress: "proxy",
@@ -37,6 +37,7 @@ function synthesize(): Template {
         region: "us-east-1",
       },
     ],
+    workers: { architecture },
   });
   const stack = new StaticPublisherWorkersStack(app, "Workers", {
     config,
@@ -58,10 +59,22 @@ function synthesize(): Template {
 }
 
 describe("StaticPublisherWorkersStack", () => {
-  it("creates three independently sized container workers", () => {
+  it("creates four independently sized container workers", () => {
     const template = synthesize();
-    template.resourceCountIs("AWS::Lambda::Function", 3);
-    template.resourceCountIs("AWS::CloudWatch::Alarm", 9);
+    template.resourceCountIs("AWS::Lambda::Function", 4);
+    template.resourceCountIs("AWS::Lambda::Alias", 4);
+    template.resourceCountIs("AWS::Logs::LogGroup", 4);
+    template.resourceCountIs("AWS::CloudWatch::Alarm", 12);
+    const functions = template.findResources("AWS::Lambda::Function");
+    const imageUris = new Set(
+      Object.values(functions).map((resource) =>
+        JSON.stringify(
+          (resource as { Properties: { Code: { ImageUri: unknown } } })
+            .Properties.Code.ImageUri,
+        ),
+      ),
+    );
+    expect(imageUris.size).toBe(1);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Architectures: ["arm64"],
       MemorySize: 4096,
@@ -82,13 +95,66 @@ describe("StaticPublisherWorkersStack", () => {
       TreatMissingData: "notBreaching",
       Threshold: 480000,
     });
-  });
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Architectures: ["arm64"],
+      MemorySize: 1769,
+      Timeout: 600,
+      EphemeralStorage: { Size: 1024 },
+      ReservedConcurrentExecutions: 16,
+      TracingConfig: { Mode: "Active" },
+      Environment: {
+        Variables: Match.objectLike({
+          PUBLISHER_ALLOWED_OPERATION: "asset",
+          PUBLISHER_WORKSPACE_PREFIX: "publisher/dev/",
+          PUBLISHER_PROXY_URL: "http://10.0.1.10:3128",
+        }),
+      },
+      VpcConfig: Match.objectLike({
+        SecurityGroupIds: Match.anyValue(),
+        SubnetIds: Match.anyValue(),
+      }),
+    });
+    template.hasResourceProperties("AWS::IAM::Role", {
+      Description:
+        "Fetches discovered site assets and writes only to the configured workspace prefix",
+    });
+  }, 15_000);
 
   it("scopes target object access to configured prefixes", () => {
     const template = synthesize();
     const policies = template.findResources("AWS::IAM::Policy");
     expect(JSON.stringify(policies)).toContain("target-bucket/prod/www/*");
     expect(JSON.stringify(policies)).not.toContain('"Action":"s3:*"');
+
+    const assetPolicies = Object.entries(policies).filter(([logicalId]) =>
+      logicalId.startsWith("AssetWorkerRoleDefaultPolicy"),
+    );
+    expect(assetPolicies).toHaveLength(1);
+    expect(JSON.stringify(assetPolicies)).toContain("publisher/dev/");
+    expect(JSON.stringify(assetPolicies)).not.toContain("target-bucket");
+    expect(JSON.stringify(assetPolicies)).toContain("s3:ListBucket");
+    expect(JSON.stringify(assetPolicies)).toContain("publisher/dev/*");
+    expect(JSON.stringify(assetPolicies)).not.toContain("s3:GetObjectVersion");
+  });
+
+  it("keeps the asset worker on arm64 when other workers use x86_64", () => {
+    const template = synthesize("x86_64");
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Architectures: ["arm64"],
+      Environment: {
+        Variables: Match.objectLike({
+          PUBLISHER_ALLOWED_OPERATION: "asset",
+        }),
+      },
+    });
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Architectures: ["x86_64"],
+      Environment: {
+        Variables: Match.objectLike({
+          PUBLISHER_ALLOWED_OPERATION: "render",
+        }),
+      },
+    });
   });
 
   it("outputs the generated exporter role and worker aliases", () => {
@@ -96,6 +162,7 @@ describe("StaticPublisherWorkersStack", () => {
     template.hasOutput("ExporterAccessRoleArn", {});
     template.hasOutput("ExporterCallerPolicyArn", {});
     template.hasOutput("RenderFunctionArn", {});
+    template.hasOutput("AssetFunctionArn", {});
     template.hasOutput("RewriteFunctionArn", {});
     template.hasOutput("DeployFunctionArn", {});
     template.hasOutput("DeploymentTargets", {});

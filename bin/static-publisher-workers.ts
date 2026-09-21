@@ -20,7 +20,7 @@ new StaticPublisherWorkersStack(app, config.stackName, {
     region: config.region,
   },
   description:
-    "Elastic Lambda workers for WP Suite Static Publisher render, rewrite, and S3 deploy tasks",
+    "Elastic Lambda workers for WP Suite Static Publisher render, asset, rewrite, and S3 deploy tasks",
 });
 
 Aspects.of(app).add(new AwsSolutionsChecks({ verbose: true }));

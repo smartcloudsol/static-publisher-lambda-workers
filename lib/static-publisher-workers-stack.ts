@@ -68,6 +68,7 @@ function addBucketPrefixAccess(
   bucketName: string,
   prefix: string,
   objectActions: readonly string[],
+  includeListBucket = true,
 ): void {
   role.addToPrincipalPolicy(
     new iam.PolicyStatement({
@@ -75,28 +76,30 @@ function addBucketPrefixAccess(
       resources: [normalizedObjectArn(stack, bucketName, prefix)],
     }),
   );
-  role.addToPrincipalPolicy(
-    new iam.PolicyStatement({
-      actions: ["s3:ListBucket"],
-      resources: [
-        stack.formatArn({
-          service: "s3",
-          region: "",
-          account: "",
-          resource: bucketName,
-        }),
-      ],
-      ...(prefix
-        ? {
-            conditions: {
-              StringLike: {
-                "s3:prefix": [prefix.slice(0, -1), `${prefix}*`],
+  if (includeListBucket) {
+    role.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        actions: ["s3:ListBucket"],
+        resources: [
+          stack.formatArn({
+            service: "s3",
+            region: "",
+            account: "",
+            resource: bucketName,
+          }),
+        ],
+        ...(prefix
+          ? {
+              conditions: {
+                StringLike: {
+                  "s3:prefix": [prefix.slice(0, -1), `${prefix}*`],
+                },
               },
-            },
-          }
-        : {}),
-    }),
-  );
+            }
+          : {}),
+      }),
+    );
+  }
 }
 
 function lambdaRole(
@@ -282,6 +285,12 @@ export class StaticPublisherWorkersStack extends Stack {
       "Runs Playwright render tasks and writes only to the configured workspace prefix",
       true,
     );
+    const assetRole = lambdaRole(
+      this,
+      "AssetWorkerRole",
+      "Fetches discovered site assets and writes only to the configured workspace prefix",
+      true,
+    );
     const rewriteRole = lambdaRole(
       this,
       "RewriteWorkerRole",
@@ -305,6 +314,13 @@ export class StaticPublisherWorkersStack extends Stack {
         ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject"],
       );
     }
+    addBucketPrefixAccess(
+      this,
+      assetRole,
+      workspaceBucketName,
+      config.workspace.prefix,
+      ["s3:GetObject", "s3:PutObject"],
+    );
     for (const target of config.targets) {
       addBucketPrefixAccess(
         this,
@@ -333,7 +349,9 @@ export class StaticPublisherWorkersStack extends Stack {
       config.workers.architecture === "arm64"
         ? ecrAssets.Platform.LINUX_ARM64
         : ecrAssets.Platform.LINUX_AMD64;
-    const code = (): lambda.DockerImageCode =>
+    const code = (
+      platform: ecrAssets.Platform = workerPlatform,
+    ): lambda.DockerImageCode =>
       lambda.DockerImageCode.fromImageAsset(
         config.publisherExporterSource === "local-tarball"
           ? localWorkerImageDirectory
@@ -342,7 +360,7 @@ export class StaticPublisherWorkersStack extends Stack {
           buildArgs: {
             PUBLISHER_EXPORTER_VERSION: config.publisherExporterVersion,
           },
-          platform: workerPlatform,
+          platform,
         },
       );
     const logRetention = retentionDays[config.workers.logRetentionDays];
@@ -355,6 +373,10 @@ export class StaticPublisherWorkersStack extends Stack {
       retention: logRetention,
       removalPolicy: RemovalPolicy.DESTROY,
     });
+    const assetLogGroup = new logs.LogGroup(this, "AssetWorkerLogGroup", {
+      retention: logRetention,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
     const rewriteLogGroup = new logs.LogGroup(this, "RewriteWorkerLogGroup", {
       retention: logRetention,
       removalPolicy: RemovalPolicy.DESTROY,
@@ -364,6 +386,7 @@ export class StaticPublisherWorkersStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY,
     });
     renderLogGroup.grantWrite(renderRole);
+    assetLogGroup.grantWrite(assetRole);
     rewriteLogGroup.grantWrite(rewriteRole);
     deployLogGroup.grantWrite(deployRole);
 
@@ -395,6 +418,34 @@ export class StaticPublisherWorkersStack extends Stack {
         logGroup: renderLogGroup,
         description:
           "Renders bounded WordPress page batches into the Static Publisher S3 workspace",
+      },
+    );
+    const assetFunction = new lambda.DockerImageFunction(
+      this,
+      "AssetWorkerFunction",
+      {
+        code: code(ecrAssets.Platform.LINUX_ARM64),
+        architecture: lambda.Architecture.ARM_64,
+        role: assetRole,
+        memorySize: config.workers.assetMemoryMiB,
+        timeout: Duration.seconds(config.workers.assetTimeoutSeconds),
+        tracing: lambda.Tracing.ACTIVE,
+        ephemeralStorageSize: Size.mebibytes(
+          config.workers.assetEphemeralStorageMiB,
+        ),
+        reservedConcurrentExecutions: config.workers.assetConcurrency,
+        vpc,
+        vpcSubnets: subnetSelection,
+        securityGroups: workerSecurityGroups,
+        // Asset fetches use the same verified proxy or NAT path as rendering.
+        allowPublicSubnet: true,
+        environment: {
+          ...commonEnvironment,
+          PUBLISHER_ALLOWED_OPERATION: "asset",
+        },
+        logGroup: assetLogGroup,
+        description:
+          "Fetches bounded Static Publisher asset batches into the S3 workspace",
       },
     );
     const rewriteFunction = new lambda.DockerImageFunction(
@@ -442,6 +493,10 @@ export class StaticPublisherWorkersStack extends Stack {
       aliasName: "live",
       version: renderFunction.currentVersion,
     });
+    const assetAlias = new lambda.Alias(this, "AssetWorkerLiveAlias", {
+      aliasName: "live",
+      version: assetFunction.currentVersion,
+    });
     const rewriteAlias = new lambda.Alias(this, "RewriteWorkerLiveAlias", {
       aliasName: "live",
       version: rewriteFunction.currentVersion,
@@ -456,6 +511,12 @@ export class StaticPublisherWorkersStack extends Stack {
       "Render",
       renderAlias,
       config.workers.renderTimeoutSeconds,
+    );
+    addWorkerAlarms(
+      this,
+      "Asset",
+      assetAlias,
+      config.workers.assetTimeoutSeconds,
     );
     addWorkerAlarms(
       this,
@@ -476,6 +537,7 @@ export class StaticPublisherWorkersStack extends Stack {
         "Temporary credentials for the EC2 Static Publisher coordinator",
     });
     renderAlias.grantInvoke(exporterAccessRole);
+    assetAlias.grantInvoke(exporterAccessRole);
     rewriteAlias.grantInvoke(exporterAccessRole);
     deployAlias.grantInvoke(exporterAccessRole);
     addBucketPrefixAccess(
@@ -507,6 +569,7 @@ export class StaticPublisherWorkersStack extends Stack {
 
     for (const role of [
       renderRole,
+      assetRole,
       rewriteRole,
       deployRole,
       exporterAccessRole,
@@ -529,6 +592,7 @@ export class StaticPublisherWorkersStack extends Stack {
       WorkspaceBucket: workspaceBucketName,
       WorkspacePrefix: config.workspace.prefix,
       RenderFunctionArn: renderAlias.functionArn,
+      AssetFunctionArn: assetAlias.functionArn,
       RewriteFunctionArn: rewriteAlias.functionArn,
       DeployFunctionArn: deployAlias.functionArn,
       ExporterAccessRoleArn: exporterAccessRole.roleArn,

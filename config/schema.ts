@@ -35,7 +35,7 @@ const semanticVersion = z
   .trim()
   .regex(
     /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
-    "Expected a semantic version such as 1.1.62.",
+    "Expected a semantic version such as 1.1.65.",
   );
 
 const bucketName = z
@@ -283,6 +283,15 @@ export const infrastructureConfigSchema = z
           .min(512)
           .max(10240)
           .default(2048),
+        assetMemoryMiB: z.number().int().min(512).max(10240).default(1769),
+        assetTimeoutSeconds: z.number().int().min(30).max(900).default(600),
+        assetConcurrency: z.number().int().min(1).max(1000).default(16),
+        assetEphemeralStorageMiB: z
+          .number()
+          .int()
+          .min(512)
+          .max(10240)
+          .default(1024),
         rewriteMemoryMiB: z.number().int().min(512).max(10240).default(1769),
         rewriteTimeoutSeconds: z.number().int().min(30).max(900).default(300),
         rewriteConcurrency: z.number().int().min(1).max(1000).default(16),
