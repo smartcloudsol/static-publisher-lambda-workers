@@ -26,7 +26,9 @@ function synthesize(architecture: "arm64" | "x86_64" = "arm64"): Template {
       securityGroupIds: [],
       proxyUrl: "http://10.0.1.10:3128",
       proxyPort: 3128,
-      createS3GatewayEndpoint: false,
+      createS3GatewayEndpoint: true,
+      createDynamoDbGatewayEndpoint: true,
+      s3GatewayEndpointRouteTableIds: ["rtb-0123456789abcdef0"],
     },
     workspace: { prefix: "publisher/dev/", lifecycleDays: 30 },
     targets: [
@@ -180,6 +182,12 @@ describe("StaticPublisherWorkersStack", () => {
   it("connects worker progress with least-privilege IAM and ordered storage", () => {
     const template = synthesize();
     template.resourceCountIs("AWS::DynamoDB::Table", 1);
+    template.resourceCountIs("AWS::EC2::VPCEndpoint", 2);
+    template.hasResourceProperties("AWS::EC2::VPCEndpoint", {
+      ServiceName: "com.amazonaws.eu-central-1.dynamodb",
+      VpcEndpointType: "Gateway",
+      RouteTableIds: Match.anyValue(),
+    });
     template.hasResourceProperties("AWS::DynamoDB::Table", {
       BillingMode: "PAY_PER_REQUEST",
       KeySchema: [

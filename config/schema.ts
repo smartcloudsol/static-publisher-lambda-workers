@@ -171,6 +171,7 @@ export const infrastructureConfigSchema = z
         proxyUrl: proxyUrl.optional(),
         proxyPort: z.number().int().min(1).max(65535).default(3128),
         createS3GatewayEndpoint: z.boolean().default(false),
+        createDynamoDbGatewayEndpoint: z.boolean().default(false),
         s3GatewayEndpointRouteTableIds: z.array(resourceId("rtb")).default([]),
       })
       .refine((value) => Boolean(value.vpcId) !== value.useDefaultVpc, {
@@ -186,7 +187,8 @@ export const infrastructureConfigSchema = z
           "s3GatewayEndpointRouteTableIds",
         );
         if (
-          value.createS3GatewayEndpoint &&
+          (value.createS3GatewayEndpoint ||
+            value.createDynamoDbGatewayEndpoint) &&
           value.subnetIds.length > 0 &&
           value.s3GatewayEndpointRouteTableIds.length === 0
         ) {
@@ -194,18 +196,19 @@ export const infrastructureConfigSchema = z
             code: "custom",
             path: ["s3GatewayEndpointRouteTableIds"],
             message:
-              "Explicit subnetIds require explicit route table IDs for the S3 gateway endpoint.",
+              "Explicit subnetIds require explicit route table IDs for stack-managed gateway endpoints.",
           });
         }
         if (
           !value.createS3GatewayEndpoint &&
+          !value.createDynamoDbGatewayEndpoint &&
           value.s3GatewayEndpointRouteTableIds.length > 0
         ) {
           context.addIssue({
             code: "custom",
             path: ["s3GatewayEndpointRouteTableIds"],
             message:
-              "Route table IDs are used only when createS3GatewayEndpoint is true.",
+              "Route table IDs are used only when a stack-managed gateway endpoint is enabled.",
           });
         }
         if (value.renderEgress === "proxy" && !value.proxyUrl) {

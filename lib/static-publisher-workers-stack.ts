@@ -253,6 +253,25 @@ export class StaticPublisherWorkersStack extends Stack {
       }
     }
 
+    if (config.network.createDynamoDbGatewayEndpoint) {
+      // Progress persistence is part of every worker invocation. Lambda ENIs
+      // in private VPC subnets cannot reach DynamoDB's public endpoint through
+      // the browser-only forward proxy.
+      if (config.network.s3GatewayEndpointRouteTableIds.length > 0) {
+        new ec2.CfnVPCEndpoint(this, "DynamoDbGatewayEndpoint", {
+          serviceName: `com.amazonaws.${this.region}.dynamodb`,
+          vpcEndpointType: "Gateway",
+          vpcId: vpc.vpcId,
+          routeTableIds: config.network.s3GatewayEndpointRouteTableIds,
+        });
+      } else {
+        vpc.addGatewayEndpoint("DynamoDbGatewayEndpoint", {
+          service: ec2.GatewayVpcEndpointAwsService.DYNAMODB,
+          subnets: [subnetSelection],
+        });
+      }
+    }
+
     const workspaceBucket = config.workspace.bucketName
       ? s3.Bucket.fromBucketName(
           this,

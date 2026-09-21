@@ -17,6 +17,7 @@
     "proxyUrl": "http://10.0.1.10:3128",
     "proxyPort": 3128,
     "createS3GatewayEndpoint": true,
+    "createDynamoDbGatewayEndpoint": true,
     "s3GatewayEndpointRouteTableIds": ["rtb-0123456789abcdef0"]
   },
   "workspace": {

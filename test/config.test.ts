@@ -14,6 +14,7 @@ const baseConfig = {
     proxyUrl: "http://10.0.1.10:3128",
     proxyPort: 3128,
     createS3GatewayEndpoint: true,
+    createDynamoDbGatewayEndpoint: true,
     s3GatewayEndpointRouteTableIds: ["rtb-0123456789abcdef0"],
   },
   workspace: {
@@ -88,7 +89,7 @@ describe("infrastructure configuration", () => {
     ).toThrow(/exactly one/);
   });
 
-  it("requires route tables for an S3 endpoint with explicit subnets", () => {
+  it("requires route tables for managed gateway endpoints with explicit subnets", () => {
     expect(() =>
       infrastructureConfigSchema.parse({
         ...baseConfig,
@@ -99,6 +100,19 @@ describe("infrastructure configuration", () => {
           proxyUrl: "http://10.0.1.10:3128",
           proxyPort: 3128,
           createS3GatewayEndpoint: true,
+        },
+      }),
+    ).toThrow(/route table IDs/);
+    expect(() =>
+      infrastructureConfigSchema.parse({
+        ...baseConfig,
+        network: {
+          vpcId: "vpc-0123456789abcdef0",
+          subnetIds: ["subnet-0123456789abcdef0"],
+          renderEgress: "proxy",
+          proxyUrl: "http://10.0.1.10:3128",
+          proxyPort: 3128,
+          createDynamoDbGatewayEndpoint: true,
         },
       }),
     ).toThrow(/route table IDs/);

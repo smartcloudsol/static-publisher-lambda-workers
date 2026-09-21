@@ -82,6 +82,11 @@ Important configuration fields:
   default-VPC mode selects public subnets and therefore requires proxy egress.
 - `network.createS3GatewayEndpoint` keeps workspace S3 traffic off the proxy or
   NAT. Explicit subnet IDs also require their explicit route table IDs.
+- `network.createDynamoDbGatewayEndpoint` keeps worker progress writes on the
+  AWS network without requiring a NAT gateway. It uses the same explicit route
+  table IDs as the S3 endpoint. Both switches must be disabled when equivalent
+  shared endpoints are managed outside this stack; gateway endpoints have no
+  additional hourly or data processing charge.
 - `workspace.prefix` and every target `prefix` must be non-empty. Sharing a
   bucket is supported only when each deployment owns a disjoint prefix.
 - `targets` is the complete deploy-copy allowlist. Use an empty array for a
