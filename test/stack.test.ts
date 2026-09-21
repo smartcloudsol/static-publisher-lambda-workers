@@ -18,7 +18,7 @@ function synthesize(architecture: "arm64" | "x86_64" = "arm64"): Template {
     account: "123456789012",
     region: "eu-central-1",
     callerRoleArn: "arn:aws:iam::123456789012:role/exporter",
-    publisherExporterVersion: "1.1.67",
+    publisherExporterVersion: "1.1.68",
     network: {
       useDefaultVpc: true,
       renderEgress: "proxy",

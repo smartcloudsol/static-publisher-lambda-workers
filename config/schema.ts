@@ -35,7 +35,7 @@ const semanticVersion = z
   .trim()
   .regex(
     /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
-    "Expected a semantic version such as 1.1.67.",
+    "Expected a semantic version such as 1.1.68.",
   );
 
 const bucketName = z

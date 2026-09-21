@@ -37,7 +37,7 @@ task.
 - AWS credentials allowed to bootstrap and deploy CDK, create IAM roles, and
   pass the created execution roles
 - a bootstrapped target account and Region (`npx cdk bootstrap` once)
-- Static Publisher exporter 1.1.67 or newer
+- Static Publisher exporter 1.1.68 or newer
 - one verified render/asset egress path: a private forward proxy or NAT from
   private subnets
 
@@ -71,6 +71,8 @@ Important configuration fields:
   delegation requires 1.1.65 or newer, live progress requires 1.1.66 or newer,
   and origin-first MIME preservation plus metadata repair requires 1.1.67 or
   newer.
+  Chromium runtime recovery, stale profile/process cleanup, one-page browser
+  retry, and resource checkpoint logging require 1.1.68 or newer.
 - `publisherExporterSource` is `npm` for a published release or
   `local-tarball` for a local exporter checkout.
 - Set exactly one of `network.vpcId` or `network.useDefaultVpc: true`.
