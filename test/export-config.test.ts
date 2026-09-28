@@ -29,7 +29,20 @@ function outputs(assetFunctionArn?: string): Record<string, unknown> {
       ExporterCallerPolicyArn:
         "arn:aws:iam::123456789012:policy/exporter-caller",
       WorkerProtocolVersion: "1",
-      DeploymentTargets: "[]",
+      DeploymentTargets: JSON.stringify([
+        {
+          id: "wpsuite-production",
+          bucketName: "wpsuite",
+          prefix: "prod/www/",
+          region: "us-east-1",
+        },
+        {
+          id: "client-staging",
+          bucketName: "client-staging-site",
+          prefix: "wwwroot/",
+          region: "eu-central-1",
+        },
+      ]),
       WorkerProgressTableName: "publisher-worker-progress",
     },
   };
@@ -66,6 +79,86 @@ describe("remote worker config export", () => {
       expect(exported.functions.asset).toBe(assetFunctionArn);
       expect(exported.status.tableName).toBe("publisher-worker-progress");
       expect((await stat(destinationPath)).mode & 0o777).toBe(0o600);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("exports an isolated target-specific asset", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "publisher-export-config-target-"),
+    );
+    try {
+      const outputsPath = path.join(directory, "outputs.json");
+      const destinationPath = path.join(directory, "remote-workers.json");
+      await writeFile(
+        outputsPath,
+        JSON.stringify(
+          outputs(
+            "arn:aws:lambda:eu-central-1:123456789012:function:asset:live",
+          ),
+        ),
+        "utf8",
+      );
+
+      await execFileAsync(process.execPath, [
+        exportConfigScript,
+        "--outputs",
+        outputsPath,
+        "--destination",
+        destinationPath,
+        "--target-id",
+        "client-staging",
+        "--aws-profile",
+        "client-workers",
+      ]);
+
+      const exported = JSON.parse(await readFile(destinationPath, "utf8")) as {
+        awsProfile?: string;
+        targets: Array<{ id: string }>;
+      };
+      expect(exported.awsProfile).toBe("client-workers");
+      expect(exported.targets).toEqual([
+        {
+          id: "client-staging",
+          bucketName: "client-staging-site",
+          prefix: "wwwroot/",
+          region: "eu-central-1",
+        },
+      ]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects unsafe AWS profile names", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "publisher-export-config-profile-"),
+    );
+    try {
+      const outputsPath = path.join(directory, "outputs.json");
+      const destinationPath = path.join(directory, "remote-workers.json");
+      await writeFile(
+        outputsPath,
+        JSON.stringify(
+          outputs(
+            "arn:aws:lambda:eu-central-1:123456789012:function:asset:live",
+          ),
+        ),
+        "utf8",
+      );
+
+      await expect(
+        execFileAsync(process.execPath, [
+          exportConfigScript,
+          "--outputs",
+          outputsPath,
+          "--destination",
+          destinationPath,
+          "--aws-profile",
+          "../client workers",
+        ]),
+      ).rejects.toThrow(/valid AWS shared-config profile/);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

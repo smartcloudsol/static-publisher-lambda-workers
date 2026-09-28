@@ -362,13 +362,33 @@ export class StaticPublisherWorkersStack extends Stack {
       config.workspace.prefix,
       ["s3:GetObject", "s3:PutObject"],
     );
+    const deployTargetRoleArns = config.targets.flatMap((target) =>
+      target.roleArn ? [target.roleArn] : [],
+    );
+    const coordinatorTargetRoleArns = config.targets.flatMap((target) =>
+      target.coordinatorRoleArn
+        ? [target.coordinatorRoleArn]
+        : target.roleArn
+          ? [target.roleArn]
+          : [],
+    );
     for (const target of config.targets) {
-      addBucketPrefixAccess(
-        this,
-        deployRole,
-        target.bucketName,
-        target.prefix,
-        ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      if (!target.roleArn) {
+        addBucketPrefixAccess(
+          this,
+          deployRole,
+          target.bucketName,
+          target.prefix,
+          ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+        );
+      }
+    }
+    if (deployTargetRoleArns.length > 0) {
+      deployRole.addToPrincipalPolicy(
+        new iam.PolicyStatement({
+          actions: ["sts:AssumeRole"],
+          resources: deployTargetRoleArns,
+        }),
       );
     }
 
@@ -377,7 +397,6 @@ export class StaticPublisherWorkersStack extends Stack {
       PUBLISHER_WORKER_PROTOCOL_VERSION: "1",
       PUBLISHER_WORKSPACE_BUCKET: workspaceBucketName,
       PUBLISHER_WORKSPACE_PREFIX: config.workspace.prefix,
-      PUBLISHER_ALLOWED_TARGETS: JSON.stringify(config.targets),
       PUBLISHER_PROGRESS_TABLE: progressTable.tableName,
       PUBLISHER_PROGRESS_RETENTION_SECONDS: String(
         config.workspace.lifecycleDays * 24 * 60 * 60,
@@ -521,6 +540,18 @@ export class StaticPublisherWorkersStack extends Stack {
         environment: {
           ...commonEnvironment,
           PUBLISHER_ALLOWED_OPERATION: "deploy-copy",
+          PUBLISHER_ALLOWED_TARGETS: JSON.stringify(
+            config.targets.map(
+              ({ id, bucketName, prefix, region, roleArn, externalId }) => ({
+                id,
+                bucketName,
+                prefix,
+                region,
+                ...(roleArn ? { roleArn } : {}),
+                ...(externalId ? { externalId } : {}),
+              }),
+            ),
+          ),
         },
         logGroup: deployLogGroup,
         description:
@@ -609,7 +640,10 @@ export class StaticPublisherWorkersStack extends Stack {
         statements: [
           new iam.PolicyStatement({
             actions: ["sts:AssumeRole"],
-            resources: [exporterAccessRole.roleArn],
+            resources: [
+              exporterAccessRole.roleArn,
+              ...coordinatorTargetRoleArns,
+            ],
           }),
         ],
       },
@@ -653,7 +687,15 @@ export class StaticPublisherWorkersStack extends Stack {
       ProxyUrl: config.network.proxyUrl ?? "",
       WorkerProtocolVersion: "1",
       PublisherExporterVersion: config.publisherExporterVersion,
-      DeploymentTargets: JSON.stringify(config.targets),
+      DeploymentTargets: JSON.stringify(
+        config.targets.map(({ id, bucketName, prefix, region }) => ({
+          id,
+          bucketName,
+          prefix,
+          region,
+        })),
+      ),
+      DeployWorkerRoleArn: deployRole.roleArn,
       WorkerProgressTableName: progressTable.tableName,
       WorkerProgressTableArn: progressTable.tableArn,
     };

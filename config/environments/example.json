@@ -31,7 +31,10 @@
       "id": "production",
       "bucketName": "static-site-bucket",
       "prefix": "www/",
-      "region": "eu-central-1"
+      "region": "eu-central-1",
+      "roleArn": "arn:aws:iam::210987654321:role/static-publisher-deploy",
+      "coordinatorRoleArn": "arn:aws:iam::210987654321:role/static-publisher-coordinator",
+      "externalId": "replace-with-a-target-specific-external-id"
     }
   ],
   "workers": {

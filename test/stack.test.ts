@@ -38,6 +38,16 @@ function synthesize(architecture: "arm64" | "x86_64" = "arm64"): Template {
         prefix: "prod/www/",
         region: "us-east-1",
       },
+      {
+        id: "cross-account",
+        bucketName: "cross-account-target",
+        prefix: "wwwroot/",
+        region: "eu-central-1",
+        roleArn: "arn:aws:iam::210987654321:role/static-publisher-deploy",
+        coordinatorRoleArn:
+          "arn:aws:iam::210987654321:role/static-publisher-coordinator",
+        externalId: "publisher-cross-account",
+      },
     ],
     workers: { architecture },
   });
@@ -144,6 +154,58 @@ describe("StaticPublisherWorkersStack", () => {
     expect(JSON.stringify(assetPolicies)).toContain("s3:ListBucket");
     expect(JSON.stringify(assetPolicies)).toContain("publisher/dev/*");
     expect(JSON.stringify(assetPolicies)).not.toContain("s3:GetObjectVersion");
+
+    const deployPolicies = Object.entries(policies).filter(([logicalId]) =>
+      logicalId.startsWith("DeployWorkerRoleDefaultPolicy"),
+    );
+    const serializedDeployPolicies = JSON.stringify(deployPolicies);
+    expect(serializedDeployPolicies).toContain("sts:AssumeRole");
+    expect(serializedDeployPolicies).toContain(
+      "arn:aws:iam::210987654321:role/static-publisher-deploy",
+    );
+    expect(serializedDeployPolicies).not.toContain(
+      "cross-account-target/wwwroot/*",
+    );
+    expect(serializedDeployPolicies).not.toContain(
+      "arn:aws:iam::210987654321:role/static-publisher-coordinator",
+    );
+
+    const callerPolicies = template.findResources("AWS::IAM::ManagedPolicy");
+    const serializedCallerPolicies = JSON.stringify(callerPolicies);
+    expect(serializedCallerPolicies).toContain(
+      "arn:aws:iam::210987654321:role/static-publisher-coordinator",
+    );
+
+    const functions = Object.values(
+      template.findResources("AWS::Lambda::Function"),
+    ) as Array<{
+      Properties: {
+        Environment?: { Variables?: Record<string, unknown> };
+      };
+    }>;
+    const deployFunction = functions.find(
+      (resource) =>
+        resource.Properties.Environment?.Variables
+          ?.PUBLISHER_ALLOWED_OPERATION === "deploy-copy",
+    );
+    expect(
+      deployFunction?.Properties.Environment?.Variables
+        ?.PUBLISHER_ALLOWED_TARGETS,
+    ).toContain("publisher-cross-account");
+    expect(
+      deployFunction?.Properties.Environment?.Variables
+        ?.PUBLISHER_ALLOWED_TARGETS,
+    ).not.toContain("static-publisher-coordinator");
+    for (const operation of ["render", "asset", "rewrite"]) {
+      const worker = functions.find(
+        (resource) =>
+          resource.Properties.Environment?.Variables
+            ?.PUBLISHER_ALLOWED_OPERATION === operation,
+      );
+      expect(worker?.Properties.Environment?.Variables).not.toHaveProperty(
+        "PUBLISHER_ALLOWED_TARGETS",
+      );
+    }
   });
 
   it("keeps the asset worker on arm64 when other workers use x86_64", () => {
@@ -174,7 +236,23 @@ describe("StaticPublisherWorkersStack", () => {
     template.hasOutput("AssetFunctionArn", {});
     template.hasOutput("RewriteFunctionArn", {});
     template.hasOutput("DeployFunctionArn", {});
-    template.hasOutput("DeploymentTargets", {});
+    template.hasOutput("DeployWorkerRoleArn", {});
+    template.hasOutput("DeploymentTargets", {
+      Value: JSON.stringify([
+        {
+          id: "production",
+          bucketName: "target-bucket",
+          prefix: "prod/www/",
+          region: "us-east-1",
+        },
+        {
+          id: "cross-account",
+          bucketName: "cross-account-target",
+          prefix: "wwwroot/",
+          region: "eu-central-1",
+        },
+      ]),
+    });
     template.hasOutput("WorkerProgressTableName", {});
     template.hasOutput("WorkerProgressTableArn", {});
   });

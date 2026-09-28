@@ -1,0 +1,144 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Creates separate least-privilege target roles for Static Publisher deploys
+  from a coordinator and Lambda worker in another AWS account.
+
+Parameters:
+  SourceCoordinatorRoleArn:
+    Type: String
+    AllowedPattern: >-
+      ^arn:(aws|aws-cn|aws-us-gov|aws-iso|aws-iso-b):iam::[0-9]{12}:role/([A-Za-z0-9_+=,.@-]+/)*[A-Za-z0-9_+=,.@-]{1,64}$
+    Description: ARN of the WordPress coordinator instance role.
+  SourceDeployWorkerRoleArn:
+    Type: String
+    AllowedPattern: >-
+      ^arn:(aws|aws-cn|aws-us-gov|aws-iso|aws-iso-b):iam::[0-9]{12}:role/([A-Za-z0-9_+=,.@-]+/)*[A-Za-z0-9_+=,.@-]{1,64}$
+    Description: ARN from the Static Publisher DeployWorkerRoleArn output.
+  ExternalId:
+    Type: String
+    NoEcho: true
+    MinLength: 2
+    MaxLength: 1224
+    AllowedPattern: "^[A-Za-z0-9_+=,.@:/-]+$"
+    Description: Target-specific external ID required for role assumption.
+  TargetBucketName:
+    Type: String
+    MinLength: 3
+    MaxLength: 63
+    AllowedPattern: "^[a-z0-9][a-z0-9.-]*[a-z0-9]$"
+    Description: Existing target S3 bucket.
+  TargetPrefix:
+    Type: String
+    Default: wwwroot/
+    MinLength: 2
+    MaxLength: 900
+    AllowedPattern: '^[^/\\][^\\]*/$'
+    Description: Non-empty owned target prefix with a trailing slash.
+  CloudFrontDistributionArn:
+    Type: String
+    Default: ""
+    AllowedPattern: >-
+      ^$|^arn:(aws|aws-cn|aws-us-gov|aws-iso|aws-iso-b):cloudfront::[0-9]{12}:distribution/[A-Z0-9]+$
+    Description: Optional distribution ARN for invalidation from the coordinator.
+
+Conditions:
+  HasCloudFrontDistribution: !Not
+    - !Equals
+      - !Ref CloudFrontDistributionArn
+      - ""
+
+Resources:
+  StaticPublisherTargetRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Cross-account S3 target access for Static Publisher deploy workers
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref SourceDeployWorkerRoleArn
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref ExternalId
+      Policies:
+        - PolicyName: StaticPublisherTargetAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ListOwnedPrefix
+                Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:ListBucketMultipartUploads
+                Resource: !Sub arn:${AWS::Partition}:s3:::${TargetBucketName}
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - !Ref TargetPrefix
+                      - !Sub ${TargetPrefix}*
+              - Sid: ManageOwnedObjects
+                Effect: Allow
+                Action:
+                  - s3:DeleteObject
+                  - s3:GetObject
+                  - s3:AbortMultipartUpload
+                  - s3:ListMultipartUploadParts
+                  - s3:PutObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${TargetBucketName}/${TargetPrefix}*
+
+  StaticPublisherCoordinatorTargetRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Cross-account S3 and CloudFront target access for Static Publisher coordinators
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref SourceCoordinatorRoleArn
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref ExternalId
+      Policies:
+        - PolicyName: StaticPublisherCoordinatorTargetAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ListOwnedPrefix
+                Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:ListBucketMultipartUploads
+                Resource: !Sub arn:${AWS::Partition}:s3:::${TargetBucketName}
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - !Ref TargetPrefix
+                      - !Sub ${TargetPrefix}*
+              - Sid: ManageOwnedObjects
+                Effect: Allow
+                Action:
+                  - s3:DeleteObject
+                  - s3:GetObject
+                  - s3:AbortMultipartUpload
+                  - s3:ListMultipartUploadParts
+                  - s3:PutObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${TargetBucketName}/${TargetPrefix}*
+              - !If
+                - HasCloudFrontDistribution
+                - Sid: InvalidateDistribution
+                  Effect: Allow
+                  Action: cloudfront:CreateInvalidation
+                  Resource: !Ref CloudFrontDistributionArn
+                - !Ref AWS::NoValue
+
+Outputs:
+  TargetRoleArn:
+    Description: S3-only role ARN for the Lambda deployment target.
+    Value: !GetAtt StaticPublisherTargetRole.Arn
+  CoordinatorTargetRoleArn:
+    Description: Role ARN for the WordPress named deployment profile.
+    Value: !GetAtt StaticPublisherCoordinatorTargetRole.Arn

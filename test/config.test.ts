@@ -38,6 +38,41 @@ describe("infrastructure configuration", () => {
     expect(parsed.targets[0]?.prefix).toBe("prod/www/");
   });
 
+  it("accepts a cross-account target role and validates its external ID", () => {
+    const parsed = infrastructureConfigSchema.parse({
+      ...baseConfig,
+      targets: [
+        {
+          ...baseConfig.targets[0],
+          roleArn: "arn:aws:iam::210987654321:role/static-publisher-deploy",
+          coordinatorRoleArn:
+            "arn:aws:iam::210987654321:role/static-publisher-coordinator",
+          externalId: "publisher-target-210987654321",
+        },
+      ],
+    });
+    expect(parsed.targets[0]?.roleArn).toContain("210987654321");
+    expect(parsed.targets[0]?.coordinatorRoleArn).toContain("210987654321");
+    expect(() =>
+      infrastructureConfigSchema.parse({
+        ...baseConfig,
+        targets: [{ ...baseConfig.targets[0], externalId: "missing-role" }],
+      }),
+    ).toThrow(/requires roleArn/);
+    expect(() =>
+      infrastructureConfigSchema.parse({
+        ...baseConfig,
+        targets: [
+          {
+            ...baseConfig.targets[0],
+            coordinatorRoleArn:
+              "arn:aws:iam::210987654321:role/static-publisher-coordinator",
+          },
+        ],
+      }),
+    ).toThrow(/requires roleArn/);
+  });
+
   it("creates the required DynamoDB gateway endpoint by default", () => {
     const parsed = infrastructureConfigSchema.parse({
       ...baseConfig,
@@ -220,13 +255,20 @@ describe("infrastructure configuration", () => {
     ).toThrow(/originSecurityGroupId/);
   });
 
-  it("requires account and caller role ARN account to agree", () => {
+  it("allows a cross-account caller only when policy attachment is disabled", () => {
+    const parsed = infrastructureConfigSchema.parse({
+      ...baseConfig,
+      account: "210987654321",
+      attachCallerPolicy: false,
+    });
+    expect(parsed.callerRoleArn).toContain("123456789012");
     expect(() =>
       infrastructureConfigSchema.parse({
         ...baseConfig,
         account: "210987654321",
+        attachCallerPolicy: true,
       }),
-    ).toThrow(/must belong to the configured account/);
+    ).toThrow(/attachCallerPolicy requires/);
   });
 
   it("rejects malformed buckets and duplicate infrastructure IDs", () => {

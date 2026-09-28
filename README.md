@@ -60,13 +60,16 @@ the local file, generated `remote-workers.json`, CDK outputs, or context data.
 
 Important configuration fields:
 
-- `account`, `region`, and `stackName` identify the deployment. If `account` is
-  present, it must match the account in `callerRoleArn`.
+- `account`, `region`, and `stackName` identify the deployment. `account` is the
+  worker stack account; it may differ from the account in `callerRoleArn` when
+  `attachCallerPolicy` is false.
 - `callerRoleArn` is the EC2 instance-profile role allowed to assume the
-  generated exporter role.
+  generated exporter role. It may belong to another AWS account.
 - `attachCallerPolicy` controls whether CDK attaches its generated
   `sts:AssumeRole` policy to that same-account role. When false, attach the
-  `ExporterCallerPolicyArn` output through your normal IAM process.
+  equivalent permission through your normal IAM process. It must be false for
+  a cross-account caller because an IAM managed policy cannot be attached to a
+  role in another account.
 - `publisherExporterVersion` pins the exact worker implementation. Asset
   delegation requires 1.1.65 or newer, live progress requires 1.1.66 or newer,
   and origin-first MIME preservation plus metadata repair requires 1.1.67 or
@@ -101,7 +104,15 @@ Important configuration fields:
 - `workspace.prefix` and every target `prefix` must be non-empty. Sharing a
   bucket is supported only when each deployment owns a disjoint prefix.
 - `targets` is the complete deploy-copy allowlist. Use an empty array for a
-  render/asset/rewrite-only deployment. Target IDs must be unique.
+  render/asset/rewrite-only deployment. Target IDs must be unique. A target in
+  the stack account omits `roleArn`. A cross-account target sets an exact
+  `roleArn` and preferably a target-specific `externalId`; the deploy worker
+  receives only `sts:AssumeRole` for that ARN instead of direct target-bucket
+  access. Set `coordinatorRoleArn` when the WordPress host must use a separate
+  target role for local deploys or CloudFront invalidations. CDK grants the
+  caller permission to assume that role, but does not disclose it to workers or
+  export it in `remote-workers.json`. If omitted, `roleArn` remains the
+  backward-compatible coordinator role as well.
 - `workers.assetMemoryMiB`, `assetTimeoutSeconds`, and
   `assetEphemeralStorageMiB` independently size asset fetch invocations. The
   asset worker is always ARM64; `workers.architecture` continues to select the
@@ -118,6 +129,42 @@ proxy must not be internet-open, and its own egress policy should restrict the
 destinations the render and asset workers may reach. When existing worker
 security groups are supplied, the operator remains responsible for their
 outbound rules.
+
+### Worker stack in another AWS account
+
+The coordinator may run in a different account from this stack. Set `account`
+to the worker account, set `callerRoleArn` to the coordinator host's exact EC2
+role ARN, and set `attachCallerPolicy` to `false`. The worker stack then trusts
+that caller but does not attempt to attach a managed policy across accounts.
+Install `config/cross-account/coordinator-policy.yaml` separately in the
+coordinator account to grant only `sts:AssumeRole` on this stack's
+`ExporterAccessRoleArn` output. When the coordinator can also perform local
+deployment, pass its exact target role as `DeploymentTargetRoleArn`; omit that
+parameter for a delegated-only target that needs no host-side target access.
+
+If the host needs an explicit credential selection, export the site's
+`remote-workers.json` with `--aws-profile <name>` and configure that named
+profile to assume `ExporterAccessRole`. This worker-plane profile is separate
+from a deployment target's `awsProfile`: the former selects credentials for
+Lambda, workspace S3, and progress-table access, while the latter selects
+credentials for the final S3/CloudFront deployment.
+
+Run `scripts/configure-wordpress-aws-profile.sh` as the same operating-system
+user that runs the exporter queue worker. For example, when that user is
+`ubuntu`:
+
+```bash
+sudo -u ubuntu -H ./scripts/configure-wordpress-aws-profile.sh \
+  client-workers \
+  arn:aws:iam::210987654321:role/WorkerExporterAccessRole \
+  eu-central-1
+```
+
+For a deployment-target profile, pass the target stack's
+`CoordinatorTargetRoleArn` output and its external ID as the fourth argument.
+The generated shared-config entry uses EC2 instance metadata as its credential
+source and stores no long-lived access key. Do not use the S3-only
+`TargetRoleArn` output for the host profile.
 
 ## Local exporter builds
 
@@ -153,8 +200,29 @@ operationally enabled until that file exists at
 `<site-runtime>/remote-workers.json` on the coordinator host.
 
 The generated file includes the DynamoDB progress table name. It contains no
-AWS credentials. The exporter reads the table with the same temporary role it
-already uses for Lambda invocation and S3 workspace access.
+AWS credentials, target role ARN, or external ID. The exporter reads the table
+with the same temporary role it already uses for Lambda invocation and S3
+workspace access. Use `scripts/export-config.mjs --target-id <id>` to produce a
+site-specific file that exposes only one allowed deploy target. Add
+`--aws-profile <name>` when the coordinator must select a host profile to reach
+this worker stack. The profile name is not a credential; it normally resolves
+to the generated `ExporterAccessRole`. Without it, the exporter assumes that
+role from ambient credentials.
+
+For a cross-account target, the worker first reads the source workspace object
+with its source-account execution role and then uploads it with temporary target
+role credentials. The target role therefore needs access only to its own bucket
+prefix. Its trust policy must allow the source deploy worker role and should
+require the configured external ID. The `DeployWorkerRoleArn` stack output
+identifies the exact Lambda role to trust. The WordPress host uses a separate
+coordinator target role through its named profile, so the worker never receives
+CloudFront invalidation permission and the coordinator role does not trust the
+Lambda principal. `config/cross-account/target-role.yaml` creates both roles:
+use `TargetRoleArn` in the CDK target allowlist and
+`CoordinatorTargetRoleArn` as `coordinatorRoleArn` and in the host profile.
+When the worker stack and
+target bucket share an account, omit the target `roleArn` so CDK grants the
+deploy worker direct prefix access.
 
 Install to a locally accessible runtime directory:
 

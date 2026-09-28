@@ -14,6 +14,14 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   access, alarms, and Static Publisher exporter 1.1.65 compatibility.
 - Safe dual-remote publishing with an explicit public-source allowlist and
   leak checks before updating the public repository.
+- Per-target cross-account deploy roles with external-ID support, separated
+  source and target S3 credentials, and a generated deploy-worker role output.
+- Separate target-account worker and coordinator roles so delegated copies do
+  not receive CloudFront permission and host profiles do not trust Lambda.
+- Separate source-side worker and coordinator assume-role grants, keeping the
+  coordinator role out of Lambda configuration and generated runtime files.
+- Target-filtered remote-worker export for isolated site-specific pipeline
+  assets.
 
 ### Fixed
 

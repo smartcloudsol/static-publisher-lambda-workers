@@ -10,6 +10,8 @@ README.md
 SECURITY.md
 bin/static-publisher-workers.ts
 cdk.json
+config/cross-account/coordinator-policy.yaml
+config/cross-account/target-role.yaml
 config/environments/example.json
 config/github-public-files.txt
 config/load-config.ts
@@ -20,6 +22,7 @@ lib/static-publisher-workers-stack.ts
 package-lock.json
 package.json
 scripts/export-config.mjs
+scripts/configure-wordpress-aws-profile.sh
 scripts/install-runtime-config.sh
 scripts/prepare-local-exporter.mjs
 scripts/prepare-canary-config.mjs
@@ -29,6 +32,7 @@ scripts/publish.sh
 scripts/synth.sh
 scripts/test.sh
 test/config.test.ts
+test/cross-account-template.test.ts
 test/canary-config.test.ts
 test/render-canary.test.ts
 test/container-runtime.test.ts

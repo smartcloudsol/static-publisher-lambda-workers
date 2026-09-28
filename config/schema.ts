@@ -30,6 +30,15 @@ const roleArn = z
     /^arn:(?:aws|aws-cn|aws-us-gov|aws-iso|aws-iso-b):iam::\d{12}:role\/(?:[A-Za-z0-9_+=,.@-]+\/)*[A-Za-z0-9_+=,.@-]{1,64}$/,
     "Expected an IAM role ARN.",
   );
+const externalId = z
+  .string()
+  .trim()
+  .min(2)
+  .max(1224)
+  .regex(
+    /^[A-Za-z0-9_+=,.@:/-]+$/,
+    "External IDs may contain letters, digits, and _+=,.@:/- only.",
+  );
 const semanticVersion = z
   .string()
   .trim()
@@ -123,17 +132,37 @@ const proxyUrl = z.url().superRefine((value, context) => {
   }
 });
 
-const targetSchema = z.object({
-  id: z
-    .string()
-    .trim()
-    .min(1)
-    .max(64)
-    .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
-  bucketName,
-  prefix,
-  region: awsRegion,
-});
+const targetSchema = z
+  .object({
+    id: z
+      .string()
+      .trim()
+      .min(1)
+      .max(64)
+      .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
+    bucketName,
+    prefix,
+    region: awsRegion,
+    roleArn: roleArn.optional(),
+    coordinatorRoleArn: roleArn.optional(),
+    externalId: externalId.optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.externalId && !value.roleArn) {
+      context.addIssue({
+        code: "custom",
+        path: ["externalId"],
+        message: "A target externalId requires roleArn.",
+      });
+    }
+    if (value.coordinatorRoleArn && !value.roleArn) {
+      context.addIssue({
+        code: "custom",
+        path: ["coordinatorRoleArn"],
+        message: "A target coordinatorRoleArn requires roleArn.",
+      });
+    }
+  });
 
 const uniqueResourceIds = (
   values: readonly string[],
@@ -329,13 +358,14 @@ export const infrastructureConfigSchema = z
         message: "Target IDs must be unique.",
       });
     }
-    if (value.account) {
+    if (value.account && value.attachCallerPolicy) {
       const arnAccount = value.callerRoleArn.split(":")[4];
       if (arnAccount !== value.account) {
         context.addIssue({
           code: "custom",
           path: ["callerRoleArn"],
-          message: "callerRoleArn must belong to the configured account.",
+          message:
+            "attachCallerPolicy requires callerRoleArn to belong to the configured stack account. Use attachCallerPolicy=false for a cross-account coordinator and grant sts:AssumeRole in the caller account.",
         });
       }
     }

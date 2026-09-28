@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Grants an existing WordPress EC2 role permission to assume a Static Publisher
+  exporter access role in another AWS account.
+
+Parameters:
+  CoordinatorRoleName:
+    Type: String
+    MinLength: 1
+    MaxLength: 64
+    AllowedPattern: "^[A-Za-z0-9_+=,.@-]+$"
+    Description: Existing coordinator IAM role name in this account.
+  WorkerExporterAccessRoleArn:
+    Type: String
+    AllowedPattern: >-
+      ^arn:(aws|aws-cn|aws-us-gov|aws-iso|aws-iso-b):iam::[0-9]{12}:role/([A-Za-z0-9_+=,.@-]+/)*[A-Za-z0-9_+=,.@-]{1,64}$
+    Description: ExporterAccessRoleArn output from the worker stack.
+  DeploymentTargetRoleArn:
+    Type: String
+    Default: ""
+    AllowedPattern: >-
+      ^$|^arn:(aws|aws-cn|aws-us-gov|aws-iso|aws-iso-b):iam::[0-9]{12}:role/([A-Za-z0-9_+=,.@-]+/)*[A-Za-z0-9_+=,.@-]{1,64}$
+    Description: Optional target role used by local S3 deploy and CloudFront invalidation.
+
+Conditions:
+  HasDeploymentTargetRole: !Not
+    - !Equals
+      - !Ref DeploymentTargetRoleArn
+      - ""
+
+Resources:
+  CrossAccountWorkerCallerPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Allows the WordPress coordinator to reach one worker stack
+      Roles:
+        - !Ref CoordinatorRoleName
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AssumeWorkerExporterAccessRole
+            Effect: Allow
+            Action: sts:AssumeRole
+            Resource: !Ref WorkerExporterAccessRoleArn
+          - !If
+            - HasDeploymentTargetRole
+            - Sid: AssumeDeploymentTargetRole
+              Effect: Allow
+              Action: sts:AssumeRole
+              Resource: !Ref DeploymentTargetRoleArn
+            - !Ref AWS::NoValue
+
+Outputs:
+  CallerPolicyArn:
+    Description: Managed policy attached to the coordinator role.
+    Value: !Ref CrossAccountWorkerCallerPolicy
