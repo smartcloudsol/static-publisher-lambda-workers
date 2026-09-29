@@ -25,6 +25,10 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Use Static Publisher exporter 1.1.82 or newer so cross-account deploy workers
+  buffer streamed S3 bodies into checksum-compatible chunks, keep relative URL
+  rewriting idempotent, and remove nested browser-runtime DOM before saving
+  rendered HTML.
 - Preserve origin response MIME types through rewrite, use extension inference
   only as a fallback, and recopy unchanged bodies when target Content-Type
   metadata differs.
