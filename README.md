@@ -85,6 +85,9 @@ Important configuration fields:
   The browser remains warm within one render batch; each page gets a new
   non-persistent context. The browser and its owned temporary files are cleaned
   up after the batch, with resource measurements validating the cleanup.
+  The current image build requires 1.1.85 or newer: its exact Playwright
+  dependency and exported browser launch options are checked by the final-image
+  smoke test described below.
 - `publisherExporterSource` is `npm` for a published release or
   `local-tarball` for a local exporter checkout.
 - Set exactly one of `network.vpcId` or `network.useDefaultVpc: true`.

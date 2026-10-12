@@ -5,6 +5,39 @@ publishing an npm version or changing the production worker aliases. A local
 tarball retains its package version; its SHA-256 and the deployed image digest,
 not that version string alone, identify the tested build.
 
+## Mandatory final-image browser gate
+
+Both `worker/npm/Dockerfile` and `worker/local/Dockerfile` use one exact
+`PLAYWRIGHT_VERSION` build argument (currently `1.63.0`) for the build and
+runtime base images. Their final stage runs `browser-smoke.mjs` after installing
+the exporter. The script resolves Playwright from that exporter, rejects a
+floating dependency or a mismatched installed `playwright`/`playwright-core`
+version, checks the browser executable, then actually launches headless Chromium
+with the exporter's `remoteBrowserLaunchOptions()` helper. It renders two local
+HTML documents in fresh non-persistent contexts, verifies cookie isolation,
+closes both contexts and the browser, and removes its owned temporary directory.
+No WordPress, proxy, or AWS request is involved.
+
+Before Chromium, the same final-image gate also loads the native
+`aws-lambda-ric/rapid-client.node` module. Both Docker contexts install RIC from
+an identical private runtime manifest, approve only its pinned lifecycle scripts,
+and override `http-cache-semantics` to the audited patched version. This catches
+missing native build artifacts and ABI errors before an image reaches Lambda;
+the production audit remains mandatory after installing the exporter.
+
+Exporter 1.1.85 introduces the required exact dependency and launch-options
+entry point. Updating Playwright requires changing the exporter pin and the
+Docker argument together, then rerunning this image build and the Lambda canary.
+Do not disable the smoke or override the executable to work around a failure.
+The two script copies are intentional because the npm and local-tarball Docker
+build contexts are independent; the repository test requires byte equality.
+
+This is a Docker-build acceptance gate, not a source-only test. `npm test` and
+`synth:ci` do not prove that it passes. Build the actual architecture used by the
+render worker; an x86 image smoke cannot validate an ARM64 image. Even a passing
+Docker smoke does not replace the VPC/proxy/IAM and resource-lifecycle checks in
+an actual Lambda invocation below.
+
 1. Run the exporter type, lint, unit, browser lifecycle, build, and dependency
    audit gates. The lifecycle test must use Chromium Headless Shell, not an
    explicit full-Chromium executable. Exporter 1.1.71 uses `--no-zygote`

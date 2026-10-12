@@ -1,0 +1,7 @@
+{
+  "name": "static-publisher-worker-runtime",
+  "private": true,
+  "dependencies": { "aws-lambda-ric": "4.0.2" },
+  "overrides": { "http-cache-semantics": "4.3.0" },
+  "allowScripts": { "aws-lambda-ric@4.0.2": true }
+}

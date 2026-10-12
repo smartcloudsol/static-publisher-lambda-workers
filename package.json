@@ -37,21 +37,23 @@
     "audit:prod": "npm audit --omit=dev --audit-level=high",
     "check": "npm run format:check && npm run build && npm run lint && npm test"
   },
-  "dependencies": {
-    "aws-cdk-lib": "2.265.0",
-    "cdk-nag": "2.38.2",
-    "constructs": "10.8.1",
-    "zod": "4.4.3"
-  },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@types/node": "24.10.1",
     "aws-cdk": "2.1128.1",
+    "aws-cdk-lib": "2.273.0",
+    "cdk-nag": "2.38.2",
+    "constructs": "10.8.1",
     "eslint": "10.8.1",
     "prettier": "3.9.6",
     "tsx": "4.23.12",
     "typescript": "6.0.3",
     "typescript-eslint": "8.67.0",
-    "vitest": "4.1.10"
+    "vitest": "4.1.11",
+    "zod": "4.4.3"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.12",
+    "source-map-js": "1.2.2"
   }
 }

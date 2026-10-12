@@ -42,4 +42,8 @@ test/stack.test.ts
 tsconfig.json
 vitest.config.ts
 worker/local/Dockerfile
+worker/local/browser-smoke.mjs
+worker/local/runtime-package.json
 worker/npm/Dockerfile
+worker/npm/browser-smoke.mjs
+worker/npm/runtime-package.json
