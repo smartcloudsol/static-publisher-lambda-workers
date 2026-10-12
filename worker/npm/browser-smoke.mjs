@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -45,9 +46,37 @@ for (const [packageName, packagePath] of [
 
 // Resolve from the exporter rather than accidentally validating another
 // Playwright installation. Import the same launch options used by its worker.
-// Loading the native binding also fails the build when npm skipped the pinned
-// RIC install script or compiled it for an incompatible architecture.
-requireFromWorker("aws-lambda-ric/rapid-client.node");
+// The native RIC reads AWS_LAMBDA_RUNTIME_API in its C++ static initializer.
+// Docker builds do not receive that Lambda-provided variable. Probe in an
+// isolated child with a loopback placeholder: loading validates its ABI and
+// exports, but no Runtime API method is invoked and no image ENV is changed.
+console.log("Worker native Lambda runtime smoke started.");
+const nativeProbe = spawnSync(
+  process.execPath,
+  [
+    "-e",
+    `const client = require(process.argv[1]);
+     for (const method of ['next', 'done', 'error']) {
+       if (typeof client[method] !== 'function') {
+         throw new Error('Native Lambda runtime export missing: ' + method);
+       }
+     }`,
+    requireFromWorker.resolve("aws-lambda-ric/rapid-client.node"),
+  ],
+  {
+    env: { ...process.env, AWS_LAMBDA_RUNTIME_API: "127.0.0.1:1" },
+    encoding: "utf8",
+    timeout: 10_000,
+  },
+);
+assert.ifError(nativeProbe.error);
+assert.equal(
+  nativeProbe.status,
+  0,
+  `Native Lambda runtime smoke failed (${nativeProbe.signal ?? "exit"}): ${nativeProbe.stderr}`,
+);
+console.log("Worker native Lambda runtime smoke passed; no Runtime API calls.");
+console.log("Worker Chromium smoke started.");
 const { chromium } = requireFromExporter("playwright");
 const { remoteBrowserLaunchOptions } = await import(
   pathToFileURL(

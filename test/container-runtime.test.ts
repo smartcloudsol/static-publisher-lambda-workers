@@ -1,8 +1,10 @@
+import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 
 const projectRoot = path.resolve(
@@ -53,10 +55,12 @@ describe("worker container runtime", () => {
         "utf8",
       );
       expect(script).toContain(
-        'requireFromWorker("aws-lambda-ric/rapid-client.node")',
+        'requireFromWorker.resolve("aws-lambda-ric/rapid-client.node")',
       );
       expect(
-        script.indexOf('requireFromWorker("aws-lambda-ric/rapid-client.node")'),
+        script.indexOf(
+          'requireFromWorker.resolve("aws-lambda-ric/rapid-client.node")',
+        ),
       ).toBeGreaterThan(script.indexOf("installed version differs"));
       const dockerfile = await readFile(
         path.join(projectRoot, `worker/${source}/Dockerfile`),
@@ -74,6 +78,93 @@ describe("worker container runtime", () => {
       ).split("\n");
       expect(publicFiles).toContain(`worker/${source}/browser-smoke.mjs`);
       expect(publicFiles).toContain(`worker/${source}/runtime-package.json`);
+    },
+  );
+
+  it.each([
+    { parentEndpoint: undefined, mode: "valid", success: true },
+    {
+      parentEndpoint: "existing-runtime.internal:9001",
+      mode: "valid",
+      success: true,
+    },
+    { parentEndpoint: undefined, mode: "load-error", success: false },
+    {
+      parentEndpoint: "existing-runtime.internal:9001",
+      mode: "missing-export",
+      success: false,
+    },
+  ])(
+    "probes RIC in an isolated child without runtime calls or parent environment mutation: $mode / $parentEndpoint",
+    async ({ parentEndpoint, mode, success }) => {
+      const script = await readFile(
+        path.join(projectRoot, "worker/npm/browser-smoke.mjs"),
+        "utf8",
+      );
+      const start = script.indexOf("const nativeProbe = spawnSync(");
+      const browserStatement =
+        'const { chromium } = requireFromExporter("playwright");';
+      const end = script.indexOf(browserStatement);
+      expect(start).toBeGreaterThan(0);
+      expect(end).toBeGreaterThan(start);
+      const probeAndBrowser = script.slice(
+        start,
+        end + browserStatement.length,
+      );
+      const fixture = await mkdtemp(
+        path.join(os.tmpdir(), "worker-native-probe-"),
+      );
+      try {
+        const nativeFixture = path.join(fixture, "native-fixture.cjs");
+        const logPath = path.join(fixture, "probe.json");
+        await writeFile(
+          nativeFixture,
+          `
+const fs = require('node:fs');
+fs.writeFileSync(process.env.NATIVE_FIXTURE_LOG, JSON.stringify({endpoint:process.env.AWS_LAMBDA_RUNTIME_API}));
+if (process.env.AWS_LAMBDA_RUNTIME_API !== '127.0.0.1:1') throw new Error('Wrong probe endpoint');
+if (${JSON.stringify(mode)} === 'load-error') throw new Error('Fixture native loading failure');
+const forbidden = () => { fs.appendFileSync(process.env.NATIVE_FIXTURE_LOG, '\\nUNEXPECTED_RUNTIME_CALL'); throw new Error('Runtime API call forbidden'); };
+module.exports = {next:forbidden, done:forbidden, error:forbidden};
+if (${JSON.stringify(mode)} === 'missing-export') delete module.exports.error;
+`,
+        );
+        const parentEnv: NodeJS.ProcessEnv = {
+          ...process.env,
+          NATIVE_FIXTURE_LOG: logPath,
+        };
+        if (parentEndpoint === undefined)
+          delete parentEnv.AWS_LAMBDA_RUNTIME_API;
+        else parentEnv.AWS_LAMBDA_RUNTIME_API = parentEndpoint;
+        const before = { ...parentEnv };
+        let browserReached = false;
+        const run = () => {
+          runInNewContext(probeAndBrowser, {
+            spawnSync,
+            process: { execPath: process.execPath, env: parentEnv },
+            assert,
+            requireFromWorker: {
+              resolve: (packagePath: string) => {
+                expect(packagePath).toBe("aws-lambda-ric/rapid-client.node");
+                return nativeFixture;
+              },
+            },
+            requireFromExporter: () => {
+              browserReached = true;
+              return { chromium: {} };
+            },
+          });
+        };
+        if (success) expect(run).not.toThrow();
+        else expect(run).toThrow();
+        expect(browserReached).toBe(success);
+        expect(parentEnv).toEqual(before);
+        expect(JSON.parse(await readFile(logPath, "utf8"))).toEqual({
+          endpoint: "127.0.0.1:1",
+        });
+      } finally {
+        await rm(fixture, { recursive: true, force: true });
+      }
     },
   );
 

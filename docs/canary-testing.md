@@ -19,7 +19,11 @@ closes both contexts and the browser, and removes its owned temporary directory.
 No WordPress, proxy, or AWS request is involved.
 
 Before Chromium, the same final-image gate also loads the native
-`aws-lambda-ric/rapid-client.node` module. Both Docker contexts install RIC from
+`aws-lambda-ric/rapid-client.node` module in
+an isolated child process, supplying a loopback `AWS_LAMBDA_RUNTIME_API` only
+to that child because RIC's native static initializer requires it. The probe
+checks exports without calling the Runtime API; the placeholder is never
+persisted in the image or worker environment. Both Docker contexts install RIC from
 an identical private runtime manifest, approve only its pinned lifecycle scripts,
 and override `http-cache-semantics` to the audited patched version. This catches
 missing native build artifacts and ABI errors before an image reaches Lambda;
